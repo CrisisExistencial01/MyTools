@@ -12,6 +12,11 @@ This repository is the result of that idea.
 
 ---
 
+<h3 align="center"> Checkout the Toolkit ✨ </h3>
+<p align="center"> All the projects <a href="TOOLKIT.md">here</a></p>
+
+---
+
 ## 📜 Some rules
 
 ### 🏷️ Branch Nomenclature
