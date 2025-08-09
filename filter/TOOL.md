@@ -1,5 +1,5 @@
 # 🔍 filter
-A simple filter similar to `grep`, but in another color 🟢  
+A simple filter similar to `grep`, but in another color 🟢
 And written in Rust 🦀
 
 ## Usage
@@ -13,7 +13,7 @@ ls -l | filter txt
 ```
 
 ## Why another filter?
-I was learning Rust, and I realized I rarely used most of `grep`'s options except for simple filtering, so I made this simple tool.  
+I was learning Rust, and I realized I rarely used most of `grep`'s options except for simple filtering, so I made this simple tool.
 And I wanted a filter that highlights matches in **green** 🟢
 
 ## Features
@@ -34,5 +34,4 @@ You can move it to a directory in your PATH, for example:
 mv target/release/filter /usr/local/bin/
 ```
 ## License
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
+This project is licensed under the MIT License. See the [LICENSE](../LICENSE) file for details.
