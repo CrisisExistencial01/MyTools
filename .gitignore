@@ -2,3 +2,4 @@
 **/target
 **/bin/*
 **/*.o
+**/__pycache__/*
