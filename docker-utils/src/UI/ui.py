@@ -1,7 +1,7 @@
 import curses
 
 class UI:
-    def __init__(self):
+    def __init__(self, title):
         self.stdscr = None
         self.wins = []
         self.running = True
@@ -9,6 +9,21 @@ class UI:
         self.data = []
         self.headers = []
         self.num_windows = 0
+
+        """
+            header_box: dict
+            {
+                "title": str,
+                "height": int,          by default 3
+                "width": int,           by default full width
+            }
+        """
+        self.header_box = {
+            "title": title,
+            "height": 3,
+            "width": None,
+            "enable": True
+        }
 
     def start(self):
         """ Lanza la aplicación, maneja inicialización y ciclo principal """
@@ -40,7 +55,12 @@ class UI:
         Configura datos, ventanas, estado inicial.
         Debe sobreescribirse en subclases.
         """
-        pass
+
+        max_y, max_x = self.stdscr.getmaxyx()
+        height = self.header_box["height"]
+        self.header_win = curses.newwin(height, max_x, 0, 0)
+        self.wins = [curses.newwin(max_y - height, max_x // self.num_windows, height, i * (max_x // self.num_windows))
+            for i in range(self.num_windows)]
 
     def draw(self):
         """
@@ -87,36 +107,55 @@ class UI:
 
 class DockerListUI(UI):
     def __init__(self, data, headers):
-        super().__init__()
+        super().__init__(title="Docker Containers List")
         self.data = data
         self.headers = headers
         self.selected = 0
         self.num_windows = len(headers)
 
-    def setup(self):
-        pass
+    def resize_windows(self):
+        max_y, max_x = self.stdscr.getmaxyx()
+        self.header_win.resize(self.header_box["height"], max_x)
+        self.header_win.mvwin(0, 0)
+
+        win_width = max_x // self.num_windows
+        win_height = max_y - self.header_box["height"]
+
+        for idx, w in enumerate(self.wins):
+            w.resize(win_height, win_width)
+            w.mvwin(self.header_box["height"], idx * win_width)
+            w.erase()
 
     def draw(self):
         max_y, max_x = self.stdscr.getmaxyx()
         self.stdscr.refresh()
-        self.stdscr.addstr(0, 0, "Docker Containers", curses.A_BOLD)
+        max_rows = max_y - 2 - self.header_box["height"]
 
-        max_rows = max_y - 2
+        if self.header_win:
+            self.header_win.box()
+            header_text = self.header_box["title"]
+            self.header_win.addstr(1, max(1, (max_x - len(header_text)) // 2), header_text, curses.A_BOLD)
+            self.header_win.refresh()
 
-        self.resize_windows()
+            win_width = max_x // self.num_windows
+            win_height = max_y - self.header_box["height"] - 1
+
+            for idx, w in enumerate(self.wins):
+                w.resize(win_height, win_width)
+                w.mvwin(self.header_box["height"], idx * win_width)
+                w.erase()
 
         for i, win in enumerate(self.wins):
             win.box()
             title = f" {self.headers[i]} "
             win_width = max_x // self.num_windows
             win.addstr(0, max(2, (win_width - len(title)) // 2), title)
-            win.addstr(1, 2, self.headers[i][:win_width - 4])
 
             # Mostrar filas
             for row_i, item in enumerate(self.data[:max_rows]):
                 line_y = 2 + row_i
                 try:
-                    text = self.row_formatter(item, i, win_width - 4)
+                    text = self.row_formatter(item, i, win_width - 4, self.headers[i])
                     if row_i == self.selected:
                         win.attron(curses.color_pair(1))
                         win.addstr(line_y, 2, text)
@@ -124,7 +163,7 @@ class DockerListUI(UI):
                     else:
                         win.addstr(line_y, 2, text)
                 except curses.error:
-                    pass  # Ignorar errores por texto fuera de pantalla
+                    pass
 
             win.refresh()
 
@@ -143,15 +182,7 @@ class DockerListUI(UI):
         elif key == ord('q'):
             self.running = False
 
-    def row_formatter(self, item, win_idx, max_width):
-        if win_idx == 0:
-            txt = f"{item['name'][:max_width]}"
-        elif win_idx == 1:
-            txt = f"{item['id'][:max_width]}"
-        elif win_idx == 2:
-            txt = f"{item['image'][:max_width]}"
-        elif win_idx == 3:
-            txt = f"{item['status'][:max_width]}"
-        else:
-            txt = ""
+    def row_formatter(self, item, win_idx, max_width, header):
+        txt = str(item.get(header, ""))[:max_width-1]
+
         return txt.ljust(max_width)

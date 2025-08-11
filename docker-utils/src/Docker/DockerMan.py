@@ -21,7 +21,7 @@ class Aux:
 
     @staticmethod
     def JE_HEADERS() -> list:
-        return [ "id", "name", "status", "image" ]
+        return [ "name", "id", "image", "status" ]
 
     @staticmethod
     def to_string(data: DockerContainer) -> str:
@@ -29,7 +29,7 @@ class Aux:
                 name: \033[032m {data.name} \033[0m
                 id: \033[035m {data.id} \033[0m
                 status: {data.status}
-                image: {Aux.handle_docker_image(data)}
+                image: {Aux.handle_docker_image(data)[0]}
                 """
 
 
