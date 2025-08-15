@@ -45,6 +45,11 @@ class DockerMan:
             print(f"Error listing containers: {e}")
             return []
 
+    def list_JE_containers(self) -> list:
+        l = self.list_containers()
+        t = list(map(Aux.just_enougth, l)) or []
+        return t
+
     def get_container(self, container_id: str) -> DockerContainer:
         try:
             container = self.client.containers.get(container_id)
