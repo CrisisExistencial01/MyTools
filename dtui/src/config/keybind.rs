@@ -1,3 +1,4 @@
+use crate::docker::ContainerAction;
 use crate::domain::AppAction;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::collections::HashMap;
@@ -100,6 +101,16 @@ impl KeyBindingMap {
                     "SelectDown" => AppAction::SelectDown,
                     "NextPanel" => AppAction::NextPanel,
                     "PrevPanel" => AppAction::PrevPanel,
+                    "ToggleHelp" => AppAction::ToggleHelp,
+                    "ToggleDetails" => AppAction::ToggleDetails,
+                    "OpenPalette" => AppAction::OpenPalette,
+                    "ClosePalette" => AppAction::ClosePalette,
+                    "ContainerStart" => AppAction::Container(ContainerAction::Start),
+                    "ContainerStop" => AppAction::Container(ContainerAction::Stop),
+                    "ContainerRestart" => AppAction::Container(ContainerAction::Restart),
+                    "ContainerPause" => AppAction::Container(ContainerAction::Pause),
+                    "ContainerUnpause" => AppAction::Container(ContainerAction::Unpause),
+                    "ContainerKill" => AppAction::Container(ContainerAction::Kill),
                     _ => continue,
                 };
                 bindings.entry(kb.clone()).or_insert(action);

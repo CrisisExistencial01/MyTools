@@ -1,3 +1,4 @@
+use crate::docker::ContainerAction;
 use crossterm::event::KeyEvent;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -13,6 +14,13 @@ pub enum AppAction {
     SelectDown,
     NextPanel,
     PrevPanel,
+    ToggleHelp,
+    ToggleDetails,
+    OpenPalette,
+    ClosePalette,
+    PaletteChar(char),
+    PaletteBackspace,
+    Container(ContainerAction),
 }
 
 pub enum AppEvent {
@@ -20,6 +28,16 @@ pub enum AppEvent {
     Tick,
     Resize(u16, u16),
     Quit,
+    OperationComplete {
+        action: ContainerAction,
+        container_id: String,
+        result: Result<(), String>,
+    },
+    DetailsFetched {
+        container_id: String,
+        result: Result<crate::docker::ContainerDetails, String>,
+    },
+    RefreshContainers,
 }
 
 pub type AppEventSender = std::sync::mpsc::Sender<AppEvent>;

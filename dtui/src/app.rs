@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::docker::{ContainerAction, ContainerDetails};
 use crate::domain::{AppAction, AppEvent, Container, ControlFlow, InitSystem, Panel};
 
 pub struct DomainState {
@@ -13,7 +14,6 @@ impl DomainState {
             init_system,
         }
     }
-
     pub fn container_count(&self) -> usize {
         self.containers.len()
     }
@@ -24,7 +24,6 @@ pub struct Viewport {
     pub height: u16,
     pub visible_rows: usize,
 }
-
 impl Viewport {
     pub fn new(width: u16, height: u16) -> Self {
         Viewport {
@@ -35,54 +34,188 @@ impl Viewport {
     }
 }
 
+pub struct StatusMessage {
+    pub text: String,
+    pub severity: StatusSeverity,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatusSeverity {
+    Info,
+    Success,
+    Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FocusedPane {
+    #[default]
+    List,
+    Details,
+}
+
+pub struct CommandPalette {
+    pub open: bool,
+    pub filter: String,
+    pub cursor: usize,
+}
+impl CommandPalette {
+    pub fn new() -> Self {
+        Self {
+            open: false,
+            filter: String::new(),
+            cursor: 0,
+        }
+    }
+    pub fn open(&mut self) {
+        self.open = true;
+        self.filter.clear();
+        self.cursor = 0;
+    }
+    pub fn close(&mut self) {
+        self.open = false;
+        self.filter.clear();
+        self.cursor = 0;
+    }
+    pub fn push_char(&mut self, c: char) {
+        self.filter.push(c);
+        self.cursor = 0;
+    }
+    pub fn backspace(&mut self) {
+        self.filter.pop();
+        self.cursor = 0;
+    }
+}
+
 pub struct ViewState {
     pub active_panel: Panel,
+    pub focused_pane: FocusedPane,
     pub selected_container: Option<usize>,
     pub scroll_offset: usize,
     pub viewport: Viewport,
+    pub status_message: Option<StatusMessage>,
+    pub selected_details: Option<ContainerDetails>,
+    pub last_fetched_id: Option<String>,
+    pub show_details: bool,
+    pub show_help: bool,
+    pub palette: CommandPalette,
+    pub needs_refresh: bool,
 }
 
 impl ViewState {
     pub fn new(width: u16, height: u16) -> Self {
         ViewState {
             active_panel: Panel::default(),
+            focused_pane: FocusedPane::default(),
             selected_container: None,
             scroll_offset: 0,
             viewport: Viewport::new(width, height),
+            status_message: None,
+            selected_details: None,
+            last_fetched_id: None,
+            show_details: false,
+            show_help: false,
+            palette: CommandPalette::new(),
+            needs_refresh: false,
         }
     }
-
-    pub fn update_viewport(&mut self, width: u16, height: u16) {
-        self.viewport.width = width;
-        self.viewport.height = height;
+    pub fn update_viewport(&mut self, w: u16, h: u16) {
+        self.viewport.width = w;
+        self.viewport.height = h;
+    }
+    pub fn set_status(&mut self, text: String, sev: StatusSeverity) {
+        self.status_message = Some(StatusMessage {
+            text,
+            severity: sev,
+        });
+    }
+    pub fn clear_status(&mut self) {
+        self.status_message = None;
+    }
+    pub fn toggle_focus(&mut self) {
+        self.focused_pane = match self.focused_pane {
+            FocusedPane::List => FocusedPane::Details,
+            _ => FocusedPane::List,
+        };
+    }
+    pub fn needs_details_fetch(&self, id: Option<&str>) -> bool {
+        match (id, &self.last_fetched_id) {
+            (Some(i), Some(f)) => i != f,
+            (Some(_), None) => true,
+            _ => false,
+        }
+    }
+    pub fn mark_details_fetched(&mut self, id: &str) {
+        self.last_fetched_id = Some(id.to_string());
     }
 
-    pub fn apply_action(&mut self, action: AppAction, container_count: usize) {
+    pub fn apply_action(&mut self, action: AppAction, count: usize) {
         match action {
             AppAction::SelectUp => {
-                let (sel, scroll) = select_up(
+                let (s, o) = select_up(
                     self.selected_container,
                     self.scroll_offset,
-                    container_count,
+                    count,
                     self.viewport.visible_rows,
                 );
-                self.selected_container = sel;
-                self.scroll_offset = scroll;
+                self.selected_container = s;
+                self.scroll_offset = o;
             }
             AppAction::SelectDown => {
-                let (sel, scroll) = select_down(
+                let (s, o) = select_down(
                     self.selected_container,
                     self.scroll_offset,
-                    container_count,
+                    count,
                     self.viewport.visible_rows,
                 );
-                self.selected_container = sel;
-                self.scroll_offset = scroll;
+                self.selected_container = s;
+                self.scroll_offset = o;
             }
             AppAction::NextPanel | AppAction::PrevPanel => {
                 self.active_panel = toggle_panel(self.active_panel);
             }
-            AppAction::Quit => {}
+            AppAction::ToggleDetails => {
+                self.show_details = !self.show_details;
+                self.focused_pane = if self.show_details {
+                    FocusedPane::Details
+                } else {
+                    FocusedPane::List
+                };
+            }
+            AppAction::ToggleHelp => {
+                self.show_help = !self.show_help;
+            }
+            AppAction::OpenPalette => {
+                self.palette.open();
+            }
+            AppAction::ClosePalette => {
+                self.palette.close();
+            }
+            AppAction::PaletteChar(c) => {
+                self.palette.push_char(c);
+            }
+            AppAction::PaletteBackspace => {
+                self.palette.backspace();
+            }
+            AppAction::Container(_) | AppAction::Quit => {}
+        }
+    }
+
+    pub fn apply_operation_result(
+        &mut self,
+        action: &ContainerAction,
+        result: &Result<(), String>,
+    ) {
+        match result {
+            Ok(()) => {
+                self.set_status(
+                    format!("{} container", action.display_name()),
+                    StatusSeverity::Success,
+                );
+                self.needs_refresh = true;
+            }
+            Err(e) => self.set_status(
+                format!("Failed to {}: {e}", action.verb()),
+                StatusSeverity::Error,
+            ),
         }
     }
 }
@@ -91,81 +224,89 @@ pub struct App {
     pub domain: DomainState,
     pub view: ViewState,
 }
-
 impl App {
-    pub fn new(init_system: InitSystem, width: u16, height: u16) -> Self {
+    pub fn new(init: InitSystem, w: u16, h: u16) -> Self {
         App {
-            domain: DomainState::new(init_system),
-            view: ViewState::new(width, height),
+            domain: DomainState::new(init),
+            view: ViewState::new(w, h),
         }
     }
-
-    pub fn handle_event(&mut self, event: AppEvent, config: &Config) -> ControlFlow {
-        match event {
-            AppEvent::KeyInput(key) => {
-                if let Some(action) = config.keybindings.lookup(&key) {
-                    if action == AppAction::Quit {
-                        return ControlFlow::Quit;
-                    }
-                    self.view
-                        .apply_action(action, self.domain.container_count());
-                }
-            }
-            AppEvent::Resize(w, h) => {
-                self.view.update_viewport(w, h);
-            }
-            AppEvent::Quit => return ControlFlow::Quit,
-            AppEvent::Tick => {}
+    pub fn handle_action(&mut self, action: AppAction) -> ControlFlow {
+        if action == AppAction::Quit {
+            return ControlFlow::Quit;
         }
+        self.view
+            .apply_action(action, self.domain.container_count());
         ControlFlow::Continue
     }
+    pub fn handle_event(&mut self, event: AppEvent) {
+        match event {
+            AppEvent::Resize(w, h) => self.view.update_viewport(w, h),
+            AppEvent::OperationComplete {
+                ref action,
+                ref result,
+                ..
+            } => self.view.apply_operation_result(action, result),
+            AppEvent::DetailsFetched {
+                container_id,
+                result,
+            } => {
+                if let Some(current_id) = self.selected_container_id() {
+                    if container_id == current_id {
+                        match result {
+                            Ok(d) => self.view.selected_details = Some(d),
+                            Err(e) => self.view.set_status(
+                                format!("Failed to fetch details: {e}"),
+                                StatusSeverity::Error,
+                            ),
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    pub fn selected_container_id(&self) -> Option<String> {
+        self.view
+            .selected_container
+            .and_then(|i| self.domain.containers.get(i))
+            .map(|c| c.id.clone())
+    }
 }
 
-fn select_up(
-    selected: Option<usize>,
-    scroll_offset: usize,
-    total: usize,
-    visible_rows: usize,
-) -> (Option<usize>, usize) {
-    if total == 0 {
-        return (selected, scroll_offset);
+fn select_up(sel: Option<usize>, off: usize, tot: usize, vis: usize) -> (Option<usize>, usize) {
+    if tot == 0 {
+        return (sel, off);
     }
-    let idx = selected.unwrap_or(0);
-    let new_idx = (idx + total - 1) % total;
-    let new_scroll = if new_idx == total - 1 && idx == 0 {
-        total.saturating_sub(visible_rows)
-    } else if scroll_offset > new_idx {
-        new_idx
+    let idx = sel.unwrap_or(0);
+    let new = (idx + tot - 1) % tot;
+    let scroll = if new == tot - 1 && idx == 0 {
+        tot.saturating_sub(vis)
+    } else if off > new {
+        new
     } else {
-        scroll_offset
+        off
     };
-    (Some(new_idx), new_scroll)
+    (Some(new), scroll)
 }
-
-fn select_down(
-    selected: Option<usize>,
-    scroll_offset: usize,
-    total: usize,
-    visible_rows: usize,
-) -> (Option<usize>, usize) {
-    if total == 0 {
-        return (selected, scroll_offset);
+fn select_down(sel: Option<usize>, off: usize, tot: usize, vis: usize) -> (Option<usize>, usize) {
+    if tot == 0 {
+        return (sel, off);
     }
-    let idx = selected.unwrap_or(0);
-    let new_idx = (idx + 1) % total;
-    let new_scroll = if new_idx == 0 && idx == total - 1 {
+    let idx = sel.unwrap_or(0);
+    let new = (idx + 1) % tot;
+    let scroll = if new == 0 && idx == tot - 1 {
         0
-    } else if new_idx >= scroll_offset + visible_rows {
-        new_idx.saturating_sub(visible_rows) + 1
+    } else if new >= off + vis {
+        new.saturating_sub(vis) + 1
     } else {
-        scroll_offset
+        off
     };
-    (Some(new_idx), new_scroll)
+    (Some(new), scroll)
 }
-
-fn toggle_panel(current: Panel) -> Panel {
-    match current {
+fn toggle_panel(p: Panel) -> Panel {
+    match p {
         Panel::Containers => Panel::Volumes,
-        Panel::Volumes => Panel::Containers,
+        _ => Panel::Containers,
     }
 }
