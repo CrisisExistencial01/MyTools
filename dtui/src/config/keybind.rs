@@ -105,6 +105,8 @@ impl KeyBindingMap {
                     "ToggleDetails" => AppAction::ToggleDetails,
                     "OpenPalette" => AppAction::OpenPalette,
                     "ClosePalette" => AppAction::ClosePalette,
+                    "OpenFilter" => AppAction::OpenFilter,
+                    "CloseFilter" => AppAction::CloseFilter,
                     "ContainerStart" => AppAction::Container(ContainerAction::Start),
                     "ContainerStop" => AppAction::Container(ContainerAction::Stop),
                     "ContainerRestart" => AppAction::Container(ContainerAction::Restart),

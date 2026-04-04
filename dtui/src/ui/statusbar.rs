@@ -9,6 +9,8 @@ pub fn render_statusbar(frame: &mut Frame, view: &ViewState, area: Rect) {
         " [/] type action... (Esc to cancel) ".to_string()
     } else if view.show_help {
         " [Help] press ? or Esc to close ".to_string()
+    } else if !view.filter.text.is_empty() {
+        format!(" 🔍 {} | f edit | Esc clear ", view.filter.text)
     } else {
         let base = match &view.status_message {
             Some(msg) => {

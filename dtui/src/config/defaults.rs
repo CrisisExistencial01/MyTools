@@ -11,5 +11,6 @@ pub fn default_keybindings() -> HashMap<String, String> {
         ("enter".to_string(), "ToggleDetails".to_string()),
         ("/".to_string(), "OpenPalette".to_string()),
         ("esc".to_string(), "ClosePalette".to_string()),
+        ("f".to_string(), "OpenFilter".to_string()),
     ])
 }

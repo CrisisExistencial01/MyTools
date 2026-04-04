@@ -24,7 +24,9 @@ async fn run(ctx: &mut AppContext<'_>) -> Result<(), AppError> {
     if !ctx.app.domain.containers.is_empty() { ctx.app.view.selected_container = Some(0); }
 
     loop {
-        while let Ok(event) = ctx.event_rx.try_recv() { ctx.app.handle_event(event); }
+        let filtered = ctx.app.view.filtered_indices(&ctx.app.domain.containers);
+
+        while let Ok(event) = ctx.event_rx.try_recv() { ctx.app.handle_event(event, &filtered); }
 
         if ctx.app.view.needs_refresh {
             ctx.app.view.needs_refresh = false;
@@ -42,17 +44,53 @@ async fn run(ctx: &mut AppContext<'_>) -> Result<(), AppError> {
                             ctx.app.handle_action(AppAction::ToggleHelp);
                         }
                         ControlFlow::Continue
+                    } else if ctx.app.view.filter.open {
+                        use crossterm::event::KeyCode;
+                        match key.code {
+                            KeyCode::Esc => {
+                                ctx.app.view.filter.clear();
+                                ControlFlow::Continue
+                            }
+                            KeyCode::Enter => {
+                                ctx.app.handle_action(AppAction::CloseFilter);
+                                ControlFlow::Continue
+                            }
+                            KeyCode::Char('j') => {
+                                ctx.app.handle_action(AppAction::SelectDown);
+                                ControlFlow::Continue
+                            }
+                            KeyCode::Char('k') => {
+                                ctx.app.handle_action(AppAction::SelectUp);
+                                ControlFlow::Continue
+                            }
+                            KeyCode::Char(c) => {
+                                ctx.app.handle_action(AppAction::FilterChar(c));
+                                ControlFlow::Continue
+                            }
+                            KeyCode::Backspace => {
+                                ctx.app.handle_action(AppAction::FilterBackspace);
+                                ControlFlow::Continue
+                            }
+                            _ => {
+                                // Pass through to normal keybinding lookup
+                                if let Some(action) = ctx.config.keybindings.lookup(key) {
+                                    ctx.app.handle_action(action)
+                                } else {
+                                    ControlFlow::Continue
+                                }
+                            }
+                        }
                     } else if ctx.app.view.palette.open {
                         match key.code {
                             KeyCode::Esc => ctx.app.handle_action(AppAction::ClosePalette),
                             KeyCode::Enter => {
                                 let all = crate::ui::palette::palette_commands();
-                                let filtered: Vec<_> = all.iter()
+                                let filtered_cmds: Vec<_> = all.iter()
                                     .filter(|e| e.key.contains(&ctx.app.view.palette.filter) || e.desc.to_lowercase().contains(&ctx.app.view.palette.filter))
                                     .collect();
-                                if let Some(entry) = filtered.get(ctx.app.view.palette.cursor) {
+                                if let Some(entry) = filtered_cmds.get(ctx.app.view.palette.cursor) {
                                     let op = entry.action;
-                                    if let Some(cid) = ctx.app.selected_container_id() {
+                                    if let Some(cid) = ctx.app.selected_container_id(&filtered) {
                                         let tx = ctx.event_tx.clone();
                                         let docker_clone = ctx.docker.clone();
                                         let cid_clone = cid.clone();
@@ -69,14 +107,20 @@ async fn run(ctx: &mut AppContext<'_>) -> Result<(), AppError> {
                             KeyCode::Backspace => { ctx.app.handle_action(AppAction::PaletteBackspace); ControlFlow::Continue }
                             _ => ControlFlow::Continue,
                         }
+                    } else if key.code == KeyCode::Esc && !ctx.app.view.filter.text.is_empty() {
+                        ctx.app.view.filter.clear();
+                        ControlFlow::Continue
                     } else if let Some(action) = ctx.config.keybindings.lookup(key) {
                         ctx.app.handle_action(action)
                     } else { ControlFlow::Continue }
                 }
-                _ => { ctx.app.handle_event(event); ControlFlow::Continue }
+                _ => { ctx.app.handle_event(event, &filtered); ControlFlow::Continue }
             };
 
-            if let Some(cid) = ctx.app.selected_container_id() {
+            // Clamp selection after filter input
+            ctx.app.view.clamp_selection(filtered.len());
+
+            if let Some(cid) = ctx.app.selected_container_id(&filtered) {
                 if ctx.app.view.needs_details_fetch(Some(&cid)) {
                     let tx = ctx.event_tx.clone();
                     let docker_clone = ctx.docker.clone();

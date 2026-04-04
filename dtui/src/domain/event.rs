@@ -21,6 +21,10 @@ pub enum AppAction {
     PaletteChar(char),
     PaletteBackspace,
     Container(ContainerAction),
+    OpenFilter,
+    CloseFilter,
+    FilterChar(char),
+    FilterBackspace,
 }
 
 pub enum AppEvent {

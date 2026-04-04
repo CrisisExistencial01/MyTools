@@ -85,6 +85,37 @@ impl CommandPalette {
     }
 }
 
+pub struct FilterState {
+    pub open: bool,
+    pub text: String,
+}
+impl FilterState {
+    pub fn new() -> Self {
+        Self {
+            open: false,
+            text: String::new(),
+        }
+    }
+    pub fn open(&mut self) {
+        self.open = true;
+        // Keep text so user can continue editing
+    }
+    pub fn close(&mut self) {
+        self.open = false;
+        // Keep text so filter persists
+    }
+    pub fn clear(&mut self) {
+        self.open = false;
+        self.text.clear();
+    }
+    pub fn push_char(&mut self, c: char) {
+        self.text.push(c);
+    }
+    pub fn backspace(&mut self) {
+        self.text.pop();
+    }
+}
+
 pub struct ViewState {
     pub active_panel: Panel,
     pub focused_pane: FocusedPane,
@@ -97,6 +128,7 @@ pub struct ViewState {
     pub show_details: bool,
     pub show_help: bool,
     pub palette: CommandPalette,
+    pub filter: FilterState,
     pub needs_refresh: bool,
 }
 
@@ -114,6 +146,7 @@ impl ViewState {
             show_details: false,
             show_help: false,
             palette: CommandPalette::new(),
+            filter: FilterState::new(),
             needs_refresh: false,
         }
     }
@@ -145,6 +178,29 @@ impl ViewState {
     }
     pub fn mark_details_fetched(&mut self, id: &str) {
         self.last_fetched_id = Some(id.to_string());
+    }
+
+    pub fn clamp_selection(&mut self, total: usize) {
+        if let Some(sel) = self.selected_container {
+            if total == 0 {
+                self.selected_container = None;
+            } else if sel >= total {
+                self.selected_container = Some(total - 1);
+            }
+        }
+    }
+
+    pub fn filtered_indices(&self, containers: &[Container]) -> Vec<usize> {
+        if self.filter.text.is_empty() {
+            return (0..containers.len()).collect();
+        }
+        let q = self.filter.text.to_lowercase();
+        containers
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.name.to_lowercase().contains(&q) || c.id.to_lowercase().contains(&q))
+            .map(|(i, _)| i)
+            .collect()
     }
 
     pub fn apply_action(&mut self, action: AppAction, count: usize) {
@@ -196,6 +252,10 @@ impl ViewState {
                 self.palette.backspace();
             }
             AppAction::Container(_) | AppAction::Quit => {}
+            AppAction::OpenFilter => self.filter.open(),
+            AppAction::CloseFilter => self.filter.close(),
+            AppAction::FilterChar(c) => self.filter.push_char(c),
+            AppAction::FilterBackspace => self.filter.backspace(),
         }
     }
 
@@ -239,7 +299,7 @@ impl App {
             .apply_action(action, self.domain.container_count());
         ControlFlow::Continue
     }
-    pub fn handle_event(&mut self, event: AppEvent) {
+    pub fn handle_event(&mut self, event: AppEvent, filtered: &[usize]) {
         match event {
             AppEvent::Resize(w, h) => self.view.update_viewport(w, h),
             AppEvent::OperationComplete {
@@ -251,7 +311,7 @@ impl App {
                 container_id,
                 result,
             } => {
-                if let Some(current_id) = self.selected_container_id() {
+                if let Some(current_id) = self.selected_container_id(filtered) {
                     if container_id == current_id {
                         match result {
                             Ok(d) => self.view.selected_details = Some(d),
@@ -266,10 +326,11 @@ impl App {
             _ => {}
         }
     }
-    pub fn selected_container_id(&self) -> Option<String> {
+    pub fn selected_container_id(&self, filtered: &[usize]) -> Option<String> {
         self.view
             .selected_container
-            .and_then(|i| self.domain.containers.get(i))
+            .and_then(|i| filtered.get(i))
+            .and_then(|&actual| self.domain.containers.get(actual))
             .map(|c| c.id.clone())
     }
 }
