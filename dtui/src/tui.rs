@@ -42,6 +42,10 @@ impl Tui {
         }
     }
 
+    pub fn size(&self) -> Result<(u16, u16), std::io::Error> {
+        crossterm::terminal::size()
+    }
+
     pub fn render<F>(&mut self, f: F) -> Result<(), AppError>
     where
         F: FnOnce(&mut ratatui::Frame),

@@ -11,20 +11,21 @@ pub enum ContainerState {
 }
 
 #[derive(Debug, Clone, Default)]
+pub struct PortMapping {
+    pub host_ip: String,
+    pub host_port: u16,
+    pub container_port: u16,
+    pub protocol: String,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct Container {
     pub id: String,
     pub name: String,
     pub image: String,
     pub state: ContainerState,
     pub status: String,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct Volume {
-    pub name: String,
-    pub driver: String,
-    pub mountpoint: String,
-    pub containers: Vec<String>,
+    pub ports: Vec<PortMapping>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

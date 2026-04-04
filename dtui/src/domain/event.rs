@@ -1,5 +1,20 @@
 use crossterm::event::KeyEvent;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlFlow {
+    Continue,
+    Quit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AppAction {
+    Quit,
+    SelectUp,
+    SelectDown,
+    NextPanel,
+    PrevPanel,
+}
+
 pub enum AppEvent {
     KeyInput(KeyEvent),
     Tick,

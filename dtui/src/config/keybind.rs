@@ -1,3 +1,4 @@
+use crate::domain::AppAction;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::collections::HashMap;
 use std::fmt;
@@ -82,33 +83,44 @@ impl fmt::Display for KeyBinding {
 
 #[derive(Debug)]
 pub struct KeyBindingMap {
-    bindings: HashMap<KeyBinding, String>,
-    reverse: HashMap<String, KeyBinding>,
+    bindings: HashMap<KeyBinding, AppAction>,
+    reverse: HashMap<AppAction, Vec<KeyBinding>>,
 }
 
 impl KeyBindingMap {
     pub fn from_config(map: &HashMap<String, String>) -> Self {
         let mut bindings = HashMap::new();
-        let mut reverse = HashMap::new();
+        let mut reverse: HashMap<AppAction, Vec<KeyBinding>> = HashMap::new();
 
-        for (key_str, action) in map {
+        for (key_str, action_str) in map {
             if let Some(kb) = KeyBinding::from_str(key_str) {
-                bindings.insert(kb.clone(), action.clone());
-                reverse.insert(action.clone(), kb);
+                let action = match action_str.as_str() {
+                    "Quit" => AppAction::Quit,
+                    "SelectUp" => AppAction::SelectUp,
+                    "SelectDown" => AppAction::SelectDown,
+                    "NextPanel" => AppAction::NextPanel,
+                    "PrevPanel" => AppAction::PrevPanel,
+                    _ => continue,
+                };
+                bindings.entry(kb.clone()).or_insert(action);
+                reverse.entry(action).or_default().push(kb);
             }
         }
 
         KeyBindingMap { bindings, reverse }
     }
 
-    pub fn lookup(&self, event: &KeyEvent) -> Option<&str> {
+    pub fn lookup(&self, event: &KeyEvent) -> Option<AppAction> {
         self.bindings
             .iter()
             .find(|(kb, _)| kb.matches(event))
-            .map(|(_, action)| action.as_str())
+            .map(|(_, action)| *action)
     }
 
-    pub fn get_key_for_action(&self, action: &str) -> Option<String> {
-        self.reverse.get(action).map(|kb| kb.to_string())
+    pub fn get_key_for_action(&self, action: AppAction) -> Option<String> {
+        self.reverse
+            .get(&action)
+            .and_then(|kbs| kbs.first())
+            .map(|kb| kb.to_string())
     }
 }
